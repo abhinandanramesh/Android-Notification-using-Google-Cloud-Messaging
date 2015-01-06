@@ -138,9 +138,9 @@ public class MessageEndpoint {
     } finally {
       mgr.close();
     }
-    // ping a max of 10 registered devices
+    // ping a max of 100 registered devices
     CollectionResponse<DeviceInfo> response = endpoint.listDeviceInfo(null,
-        1000);
+        100);
     for (DeviceInfo deviceInfo : response.getItems()) {
       doSendViaGcm(message, sender, deviceInfo);
     }
