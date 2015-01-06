@@ -11,4 +11,6 @@ To set up a HTTP server on standard web server, refer to http://developer.androi
 
 To create only the backend for an existing android app, refer to https://developers.google.com/eclipse/docs/endpoints-create-fromandroid
 
-Add annotations for the cloud end points as desired.
+Tweak the allowed number of users parameter in the gcmdemoapp-AppEngine/src/com/gcmdemoapp/MessageEndPoint.java class. Currently, I have configured the allowed number of users to 100. 1000 is the limit however though.
+
+Add annotations for the cloud end points as needed.
