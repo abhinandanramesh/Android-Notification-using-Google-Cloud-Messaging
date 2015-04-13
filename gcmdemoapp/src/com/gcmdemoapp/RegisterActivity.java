@@ -52,225 +52,271 @@ import android.widget.TextView;
  */
 public class RegisterActivity extends Activity {
 
-  enum State {
-    REGISTERED, REGISTERING, UNREGISTERED, UNREGISTERING
-  }
+	enum State {
+		REGISTERED, REGISTERING, UNREGISTERED, UNREGISTERING
+	}
 
-  private State curState = State.UNREGISTERED;
-  private OnTouchListener registerListener = null;
-  private OnTouchListener unregisterListener = null;
-  private MessageEndpoint messageEndpoint = null;
+	private State curState = State.UNREGISTERED;
+	private OnTouchListener registerListener = null;
+	private OnTouchListener unregisterListener = null;
+	private MessageEndpoint messageEndpoint = null;
+	public static Activity regcont;
+	public static ProgressDialog mProgressDialog;
 
-  @Override
-  public void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_register);
+	public static SharedPreferences app_preferences_gcm;
+	public static SharedPreferences.Editor editor_gcm;
+	
+	///// GCM Message on dialog ///////////
+	public static SharedPreferences app_preferences_message;
+	public static SharedPreferences.Editor editor_message;
 
-    Button regButton = (Button) findViewById(R.id.regButton);
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
 
-    registerListener = new OnTouchListener() {
-      @Override
-      public boolean onTouch(View v, MotionEvent event) {
-        switch (event.getAction() & MotionEvent.ACTION_MASK) {
-        case MotionEvent.ACTION_DOWN:
-          if (GCMIntentService.PROJECT_NUMBER == null
-              || GCMIntentService.PROJECT_NUMBER.length() == 0) {
-            showDialog("Unable to register for Google Cloud Messaging. "
-                + "Your application's PROJECT_NUMBER field is unset! You can change "
-                + "it in GCMIntentService.java");
-          } else {
-            updateState(State.REGISTERING);
-            try {
-              GCMIntentService.register(getApplicationContext());
-            } catch (Exception e) {
-              Log.e(RegisterActivity.class.getName(),
-                  "Exception received when attempting to register for Google Cloud "
-                      + "Messaging. Perhaps you need to set your virtual device's "
-                      + " target to Google APIs? "
-                      + "See https://developers.google.com/eclipse/docs/cloud_endpoints_android"
-                      + " for more information.", e);
-              showDialog("There was a problem when attempting to register for "
-                  + "Google Cloud Messaging. If you're running in the emulator, "
-                  + "is the target of your virtual device set to 'Google APIs?' "
-                  + "See the Android log for more details.");
-              updateState(State.UNREGISTERED);
-            }
-          }
-          return true;
-        case MotionEvent.ACTION_UP:
-          return true;
-        default:
-          return false;
-        }
-      }
-    };
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_register);		
+		
+		regcont = this;
 
-    unregisterListener = new OnTouchListener() {
-      @Override
-      public boolean onTouch(View v, MotionEvent event) {
-        switch (event.getAction() & MotionEvent.ACTION_MASK) {
-        case MotionEvent.ACTION_DOWN:
-          updateState(State.UNREGISTERING);
-          GCMIntentService.unregister(getApplicationContext());
-          return true;
-        case MotionEvent.ACTION_UP:
-          return true;
-        default:
-          return false;
-        }
-      }
-    };
+		app_preferences_gcm = PreferenceManager
+				.getDefaultSharedPreferences(RegisterActivity.this);
+		editor_gcm = app_preferences_gcm.edit();
 
-    regButton.setOnTouchListener(registerListener);
-    
-    /*
-     * build the messaging endpoint so we can access old messages via an endpoint call
-     */
-    MessageEndpoint.Builder endpointBuilder = new MessageEndpoint.Builder(
-        AndroidHttp.newCompatibleTransport(),
-        new JacksonFactory(),
-        new HttpRequestInitializer() {
-          public void initialize(HttpRequest httpRequest) { }
-        });
+		app_preferences_message = PreferenceManager
+				.getDefaultSharedPreferences(regcont);
+		editor_message = app_preferences_message.edit();
+		
+		/*
+		 * build the messaging endpoint so we can access old messages via an
+		 * endpoint call
+		 */
+		MessageEndpoint.Builder endpointBuilder = new MessageEndpoint.Builder(
+				AndroidHttp.newCompatibleTransport(), new JacksonFactory(),
+				new HttpRequestInitializer() {
+					public void initialize(HttpRequest httpRequest) {
+					}
+				});
 
-    messageEndpoint = CloudEndpointUtils.updateBuilder(endpointBuilder).build();
-  }
+		messageEndpoint = CloudEndpointUtils.updateBuilder(endpointBuilder)
+				.build();
 
-  @Override
-  protected void onNewIntent(Intent intent) {
-    super.onNewIntent(intent);
+		Boolean checkstat_gcm = app_preferences_gcm.getBoolean("check_gcm",
+				false);
 
-    /*
-     * If we are dealing with an intent generated by the GCMIntentService
-     * class, then display the provided message.
-     */
-    if (intent.getBooleanExtra("gcmIntentServiceMessage", false)) {
+		System.out.println("Register GCM");System.out.println(checkstat_gcm);System.out.println("Register GCM Status");
+		
+		if (checkstat_gcm) {
+			Intent i = new Intent(regcont,Pakshi.class);
+			startActivity(i);
+			RegisterActivity.this.finish();
 
-      showDialog(intent.getStringExtra("message"));
+		} else {
+			
+			if(isOnline()){
+				//RegisterActivity.mProgressDialog.dismiss();
+				new RegisterAsyncTask().execute();
+				RegisterActivity.editor_gcm.putBoolean("check_gcm", true);
+				RegisterActivity.editor_gcm.commit();
+				RegisterActivity.mProgressDialog.dismiss();
+				Intent i = new Intent(regcont,Pakshi.class);
+				startActivity(i);
+				RegisterActivity.this.finish();			
+			} else {
+				
+				Toast.makeText(regcont,"Check Network to Register", Toast.LENGTH_LONG).show();
+				
+				RegisterActivity.mProgressDialog.dismiss();
+				RegisterActivity.editor_gcm.putBoolean("check_gcm", false);
+				RegisterActivity.editor_gcm.commit();
 
-      if (intent.getBooleanExtra("registrationMessage", false)) {
+				Intent i = new Intent(regcont,Pakshi.class);
+				startActivity(i);
+				RegisterActivity.this.finish();
+			}
+		}
+	}
 
-        if (intent.getBooleanExtra("error", false)) {
-          /*
-           * If we get a registration/unregistration-related error,
-           * and we're in the process of registering, then we move
-           * back to the unregistered state. If we're in the process
-           * of unregistering, then we move back to the registered
-           * state.
-           */
-          if (curState == State.REGISTERING) {
-            updateState(State.UNREGISTERED);
-          } else {
-            updateState(State.REGISTERED);
-          }
-        } else {
-          /*
-           * If we get a registration/unregistration-related success,
-           * and we're in the process of registering, then we move to
-           * the registered state. If we're in the process of
-           * unregistering, the we move back to the unregistered
-           * state.
-           */
-          if (curState == State.REGISTERING) {
-            updateState(State.REGISTERED);
-          } else {
-            updateState(State.UNREGISTERED);
-          }
-        }
-      }
-      else {
-        /* 
-         * if we didn't get a registration/unregistration message then
-         * go get the last 5 messages from app-engine
-         */
-        new QueryMessagesTask(this, messageEndpoint).execute();
-      }
-    }
-  }
-  
-  private void updateState(State newState) {
-    Button registerButton = (Button) findViewById(R.id.regButton);
-    switch (newState) {
-    case REGISTERED:
-      registerButton.setText("Unregister");
-      registerButton.setOnTouchListener(unregisterListener);
-      registerButton.setEnabled(true);
-      break;
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
 
-    case REGISTERING:
-      registerButton.setText("Registering...");
-      registerButton.setEnabled(false);
-      break;
+		/*
+		 * If we are dealing with an intent generated by the GCMIntentService
+		 * class, then display the provided message.
+		 */
+		if (intent.getBooleanExtra("gcmIntentServiceMessage", false)) {
 
-    case UNREGISTERED:
-      registerButton.setText("Register");
-      registerButton.setOnTouchListener(registerListener);
-      registerButton.setEnabled(true);
-      break;
+			//showDialog(intent.getStringExtra("message"));
 
-    case UNREGISTERING:
-      registerButton.setText("Unregistering...");
-      registerButton.setEnabled(false);
-      break;
-    }
-    curState = newState;
-  }
+			if (intent.getBooleanExtra("registrationMessage", false)) {
 
-  private void showDialog(String message) {
-    new AlertDialog.Builder(this)
-        .setMessage(message)
-        .setPositiveButton(android.R.string.ok,
-            new DialogInterface.OnClickListener() {
-              public void onClick(DialogInterface dialog, int id) {
-                dialog.dismiss();
-              }
-            }).show();
-  }
+				if (intent.getBooleanExtra("error", false)) {
+					/*
+					 * If we get a registration/unregistration-related error,
+					 * and we're in the process of registering, then we move
+					 * back to the unregistered state. If we're in the process
+					 * of unregistering, then we move back to the registered
+					 * state.
+					 */
+					if (curState == State.REGISTERING) {
+						updateState(State.UNREGISTERED);
+					} else {
+						updateState(State.REGISTERED);
+					}
+				} else {
+					/*
+					 * If we get a registration/unregistration-related success,
+					 * and we're in the process of registering, then we move to
+					 * the registered state. If we're in the process of
+					 * unregistering, the we move back to the unregistered
+					 * state.
+					 */
+					if (curState == State.REGISTERING) {
+						updateState(State.REGISTERED);
+					} else {
+						updateState(State.UNREGISTERED);
+					}
+				}
+			} else {
+				/*
+				 * if we didn't get a registration/unregistration message then
+				 * go get the last 5 messages from app-engine
+				 */
+				new QueryMessagesTask(this, messageEndpoint).execute();
+			}
+		}
+	}
 
-  /*
-   * Need to run this in background so we don't hold up the UI thread, 
-   * this task will ask the App Engine backend for the last 5 messages
-   * sent to it
-   */
-  private class QueryMessagesTask 
-      extends AsyncTask<Void, Void, CollectionResponseMessageData> {
-    Exception exceptionThrown = null;
-    MessageEndpoint messageEndpoint;
+	private void updateState(State newState) {
+		Button registerButton = (Button) findViewById(R.id.regButton);
+		switch (newState) {
+		case REGISTERED:
+			registerButton.setText("Unregister");
+			registerButton.setOnTouchListener(unregisterListener);
+			registerButton.setEnabled(true);
+			break;
 
-    public QueryMessagesTask(Activity activity, MessageEndpoint messageEndpoint) {
-      this.messageEndpoint = messageEndpoint;
-    }
-    
-    @Override
-    protected CollectionResponseMessageData doInBackground(Void... params) {
-      try {
-        CollectionResponseMessageData messages = 
-            messageEndpoint.listMessages().setLimit(5).execute();
-        return messages;
-      } catch (IOException e) {
-        exceptionThrown = e;
-        return null;
-        //Handle exception in PostExecute
-      }            
-    }
-    
-    protected void onPostExecute(CollectionResponseMessageData messages) {
-      // Check if exception was thrown
-      if (exceptionThrown != null) {
-        Log.e(RegisterActivity.class.getName(), 
-            "Exception when listing Messages", exceptionThrown);
-        showDialog("Failed to retrieve the last 5 messages from " +
-        		"the endpoint at " + messageEndpoint.getBaseUrl() +
-        		", check log for details");
-      }
-      else {
-        TextView messageView = (TextView) findViewById(R.id.msgView);
-        messageView.setText("Last 5 Messages read from " + 
-            messageEndpoint.getBaseUrl() + ":\n");
-        for(MessageData message : messages.getItems()) {
-          messageView.append(message.getMessage() + "\n");
-        }
-      }
-    }   
-  }
-}
+		case REGISTERING:
+			registerButton.setText("Registering...");
+			registerButton.setEnabled(false);
+			break;
+
+		case UNREGISTERED:
+			registerButton.setText("Register");
+			registerButton.setOnTouchListener(registerListener);
+			registerButton.setEnabled(true);
+			break;
+
+		case UNREGISTERING:
+			registerButton.setText("Unregistering...");
+			registerButton.setEnabled(false);
+			break;
+		}
+		curState = newState;
+	}
+
+	private void showDialog(String message) {
+		new AlertDialog.Builder(this)
+				.setMessage(message)
+				.setPositiveButton(android.R.string.ok,
+						new DialogInterface.OnClickListener() {
+							public void onClick(DialogInterface dialog, int id) {
+								dialog.dismiss();
+							}
+						}).show();
+	}
+
+	/*
+	 * Need to run this in background so we don't hold up the UI thread, this
+	 * task will ask the App Engine backend for the last 5 messages sent to it
+	 */
+	private class QueryMessagesTask extends
+			AsyncTask<Void, Void, CollectionResponseMessageData> {
+		Exception exceptionThrown = null;
+		MessageEndpoint messageEndpoint;
+
+		public QueryMessagesTask(Activity activity,
+				MessageEndpoint messageEndpoint) {
+			this.messageEndpoint = messageEndpoint;
+		}
+
+		@Override
+		protected CollectionResponseMessageData doInBackground(Void... params) {
+			try {
+				CollectionResponseMessageData messages = messageEndpoint
+						.listMessages().setLimit(5).execute();
+				return messages;
+			} catch (IOException e) {
+				exceptionThrown = e;
+				return null;
+				// Handle exception in PostExecute
+			}
+		}
+
+		protected void onPostExecute(CollectionResponseMessageData messages) {
+			// Check if exception was thrown
+			if (exceptionThrown != null) {
+				Log.e(RegisterActivity.class.getName(),
+						"Exception when listing Messages", exceptionThrown);
+				showDialog("Failed to retrieve the last 5 messages from "
+						+ "the endpoint at " + messageEndpoint.getBaseUrl()
+						+ ", check log for details");
+			} else {
+				TextView messageView = (TextView) findViewById(R.id.msgView);
+				messageView.setText("Last 5 Messages read from "
+						+ messageEndpoint.getBaseUrl() + ":\n");
+				for (MessageData message : messages.getItems()) {
+					messageView.append(message.getMessage() + "\n");
+				}
+			}
+		}
+	}
+
+	private class RegisterAsyncTask extends AsyncTask<Void, Void, Void> {
+
+		@Override
+		protected void onPostExecute(Void result) {
+			
+		}
+
+		@Override
+		protected void onPreExecute() {
+
+			updateState(State.REGISTERING);
+			mProgressDialog = ProgressDialog.show(RegisterActivity.this,
+					"Registering to Pakshi...", "Please Wait...");
+		}
+
+		@Override
+		protected Void doInBackground(Void... params) {
+
+			try {
+				GCMIntentService.register(getApplicationContext());
+
+			} catch (Exception e) {
+				Log.e(RegisterActivity.class.getName(),
+						"Exception received when attempting to register for Google Cloud "
+								+ "Messaging. Perhaps you need to set your virtual device's "
+								+ " target to Google APIs? "
+								+ "See https://developers.google.com/eclipse/docs/cloud_endpoints_android"
+								+ " for more information.", e);
+				showDialog("There was a problem when attempting to register for "
+						+ "Google Cloud Messaging. If you're running in the emulator, "
+						+ "is the target of your virtual device set to 'Google APIs?' "
+						+ "See the Android log for more details.");
+				updateState(State.UNREGISTERED);
+			}
+
+			return null;
+		}
+	}
+
+	public boolean isOnline() {
+
+		ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+		NetworkInfo netInfo = cm.getActiveNetworkInfo();
+		if (netInfo != null && netInfo.isConnected()) {
+			return true;
+		}
+		return false;
+	}
