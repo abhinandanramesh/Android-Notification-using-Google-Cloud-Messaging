@@ -38,13 +38,16 @@ import com.gcmdemoapp.deviceinfoendpoint.model.DeviceInfo;
  */
 public class GCMIntentService extends GCMBaseIntentService {
   private final Deviceinfoendpoint endpoint;
+  private int notificationID = 100;
+  private int numMessages = 0;
+  private NotificationManager mNotificationManager;
 
   /*
    * TODO: Set this to a valid project number. See
    * http://developers.google.com/eclipse/docs/cloud_endpoints for more
    * information.
    */
-  protected static final String PROJECT_NUMBER = "44797836331";
+  protected static final String PROJECT_NUMBER = "696612533982";
 
   /**
    * Register the device for GCM.
@@ -109,11 +112,55 @@ public class GCMIntentService extends GCMBaseIntentService {
    */
   @Override
   public void onMessage(Context context, Intent intent) {
-    sendNotificationIntent(
-        context,
-        "Message received via Google Cloud Messaging:\n\n"
-            + intent.getStringExtra("message"), true, false);
-  }
+      Log.i("Start", "notification");
+
+      /* Invoking the default notification service */
+      NotificationCompat.Builder  mBuilder = 
+      new NotificationCompat.Builder(this);	
+
+      mBuilder.setContentTitle("New Bird");
+      mBuilder.setContentText("You've received information about a new bird");
+      mBuilder.setTicker("Pakshi Message Alert");
+      mBuilder.setSmallIcon(R.drawable.ic_launcher);
+
+      /* Increase notification number every time a new notification arrives */
+      mBuilder.setNumber(++numMessages);
+
+      //if (intent.getStringExtra("message") != null) {
+          /* Creates an explicit intent for an Activity in your app */
+   	  //Intent resultIntent = new Intent("com.pakshi.pakshiapp.LAUNCH", Uri.parse(intent.getStringExtra("message")));
+      Intent resultIntent = new Intent(this, NotificationView.class);
+   	  resultIntent.putExtra("message", intent.getStringExtra("message"));
+
+   	  TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
+   	  stackBuilder.addParentStack(NotificationView.class);
+
+      /* Adds the Intent that starts the Activity to the top of the stack */
+   	  stackBuilder.addNextIntent(resultIntent);
+   	  PendingIntent resultPendingIntent =
+   			  stackBuilder.getPendingIntent(
+   					  0,
+   					  PendingIntent.FLAG_ONE_SHOT
+   					  );
+
+   	 mBuilder.setContentIntent(resultPendingIntent);
+
+   // Build the notification:    
+
+ 	 Notification notification = mBuilder.build();
+
+     notification.flags |= Notification.FLAG_SHOW_LIGHTS;
+     notification.flags |= Notification.FLAG_AUTO_CANCEL;
+
+   	 notification.defaults = Notification.DEFAULT_SOUND | Notification.DEFAULT_LIGHTS | Notification.DEFAULT_VIBRATE;
+
+     mNotificationManager =
+    		  (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+      /* notificationID allows you to update the notification later on. */
+     mNotificationManager.notify(notificationID, notification);    	  
+      //}
+   }
 
   /**
    * Called back when a registration token has been received from the Google
