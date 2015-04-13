@@ -14,3 +14,7 @@ To create only the backend for an existing android app, refer to https://develop
 Tweak the allowed number of users parameter in the gcmdemoapp-AppEngine/src/com/gcmdemoapp/MessageEndPoint.java class. Currently, I have configured the allowed number of users to 100. 1000 is the limit however though.
 
 Add annotations for the cloud end points as needed.
+
+I have automated the process of GCM registration along with the Google sign in process. Add the corresponding Google Play Services library for the sign-in. Please use the library as I have uploaded for the java files to compile to compile without any overhead. Add the necessary dependencies if the latest version is used.
+
+The notification is built and handled using notification builder in the onmessage handler in GCMIntentService.java
